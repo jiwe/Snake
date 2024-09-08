@@ -1,17 +1,24 @@
-enum Direction {
-    UP,
-    Down,
-    LEFT,
-    RIGHT,
+use crossterm::event::*;
+use crossterm::terminal::ClearType;
+use crossterm::{cursor, event, execute, queue, terminal};
+use std::io::stdout;
+use std::time::Duration;
+
+struct CleanUp;
+
+impl Drop for CleanUp {
+    fn drop(&mut self) {
+        terminal::disable_raw_mode().expect("Unable to disable raw mode")
+    }
 }
 
 struct Snake {
     body: Vec<(usize, usize)>,
-    direction: Direction,
+    direction: KeyCode,
 }
 
 impl Snake {
-    fn new(body: Vec<(usize, usize)>, direction: Direction) -> Snake {
+    fn new(body: Vec<(usize, usize)>, direction: KeyCode) -> Snake {
         Snake { body, direction }
     }
 
@@ -20,7 +27,7 @@ impl Snake {
         self.body.push(position);
     }
 
-    fn set_direction(&mut self, direction: Direction) {
+    fn set_direction(&mut self, direction: KeyCode) {
         self.direction = direction;
     }
 
@@ -42,7 +49,7 @@ impl Game {
         Game {
             height,
             width,
-            snake: Snake::new(vec![(2, 2), (2, 3), (3, 3), (4, 3)], Direction::UP),
+            snake: Snake::new(vec![(2, 2), (2, 3), (3, 3), (4, 3)], KeyCode::Up),
         }
     }
 
@@ -81,11 +88,85 @@ impl Game {
             }
         }
     }
+
+    fn read_key(&self) -> std::io::Result<KeyEvent> {
+        loop {
+            if event::poll(Duration::from_millis(500))? {
+                if let Event::Key(event) = event::read()? {
+                    return Ok(event);
+                }
+            }
+        }
+    }
+
+    fn process_keypress(&mut self) -> std::io::Result<bool> {
+        match self.read_key()? {
+            KeyEvent {
+                code: KeyCode::Char('q'),
+                modifiers: KeyModifiers::CONTROL,
+                kind: _,
+                state: _,
+            } => return Ok(false),
+            KeyEvent {
+                code: direction @ (KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right),
+                modifiers: KeyModifiers::NONE,
+                kind: _,
+                state: _,
+            } => {
+                self.snake.set_direction(direction);
+                let (y, x) = self.snake.head();
+                match direction {
+                    KeyCode::Up => {
+                        if y - 1 > 0 {
+                            self.snake.take_step((y - 1, x));
+                        }
+                    }
+                    KeyCode::Down => {
+                        if y < self.height - 2 {
+                            self.snake.take_step((y + 1, x));
+                        }
+                    }
+                    KeyCode::Left => {
+                        if x - 1 > 0 {
+                            self.snake.take_step((y, x - 1));
+                        }
+                    }
+                    KeyCode::Right => {
+                        if x < self.width - 2 {
+                            self.snake.take_step((y, x + 1));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+        Ok(true)
+    }
+
+    fn clear_screen() -> std::io::Result<()> {
+        execute!(stdout(), terminal::Clear(ClearType::All))?;
+        execute!(stdout(), cursor::MoveTo(0, 0))
+    }
+
+    fn refresh_screen(&self) -> std::io::Result<()> {
+        Self::clear_screen()?;
+        self.render();
+        execute!(stdout(), cursor::MoveTo(0, 0))
+    }
+
+    fn run(&mut self) -> std::io::Result<bool> {
+        self.refresh_screen()?;
+        self.process_keypress()
+    }
 }
 
-fn main() {
+fn main() -> std::io::Result<()> {
+    let _clean_up = CleanUp;
+    terminal::enable_raw_mode()?;
+
     println!("Hello, snake!");
-    let game = Game::new(20, 30);
-    game.render();
-    print!("\r\n");
+    let mut game = Game::new(30, 40);
+    while game.run()? {}
+    Ok(())
 }
