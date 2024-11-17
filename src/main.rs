@@ -99,14 +99,14 @@ impl Game {
         }
     }
 
-    fn process_keypress(&mut self) -> std::io::Result<bool> {
+    fn process_keypress(&mut self) -> std::io::Result<u32> {
         match self.read_key()? {
             KeyEvent {
                 code: KeyCode::Char('q'),
                 modifiers: KeyModifiers::CONTROL,
                 kind: _,
                 state: _,
-            } => return Ok(false),
+            } => return Ok(1),
             KeyEvent {
                 code: direction @ (KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right),
                 modifiers: KeyModifiers::NONE,
@@ -119,21 +119,29 @@ impl Game {
                     KeyCode::Up => {
                         if y - 1 > 0 {
                             self.snake.take_step((y - 1, x));
+                        } else {
+                            return Ok(2);
                         }
                     }
                     KeyCode::Down => {
                         if y < self.height - 2 {
                             self.snake.take_step((y + 1, x));
+                        } else {
+                            return Ok(2);
                         }
                     }
                     KeyCode::Left => {
                         if x - 1 > 0 {
                             self.snake.take_step((y, x - 1));
+                        } else {
+                            return Ok(2);
                         }
                     }
                     KeyCode::Right => {
                         if x < self.width - 2 {
                             self.snake.take_step((y, x + 1));
+                        } else {
+                            return Ok(2);
                         }
                     }
                     _ => {}
@@ -141,7 +149,7 @@ impl Game {
             }
             _ => {}
         }
-        Ok(true)
+        Ok(0)
     }
 
     fn clear_screen() -> std::io::Result<()> {
@@ -155,7 +163,7 @@ impl Game {
         execute!(stdout(), cursor::MoveTo(0, 0))
     }
 
-    fn run(&mut self) -> std::io::Result<bool> {
+    fn run(&mut self) -> std::io::Result<u32> {
         self.refresh_screen()?;
         self.process_keypress()
     }
@@ -167,6 +175,9 @@ fn main() -> std::io::Result<()> {
 
     println!("Hello, snake!");
     let mut game = Game::new(30, 40);
-    while game.run()? {}
+    while game.run()? == 0 {}
+    if game.run()? == 2 {
+        println!("Game, Over!");
+    }
     Ok(())
 }
