@@ -1,6 +1,7 @@
 package main
 
 import "core:fmt"
+import "core:math"
 import "core:math/rand"
 import rl "vendor:raylib"
 
@@ -34,6 +35,12 @@ Snake :: struct {
 Food :: struct {
 	position: vec2,
 	texture: rl.Texture2D,
+}
+
+Direction :: enum {
+	Left,
+	Right,
+	Forward,
 }
 
 event_triggered :: proc(interval: f64) -> bool {
@@ -195,6 +202,158 @@ check_collection_with_tail :: proc(game: ^Game) {
 	}
 }
 
+turn_left :: proc(g: ^Game) {
+	switch g.snake.direction {
+		case vec2{0, -1} :
+			g.snake.direction = vec2{-1, 0}
+		case vec2{0, 1} :
+			g.snake.direction = vec2{1, 0}
+		case vec2{-1, 0} :
+			g.snake.direction = vec2{0, 1}
+		case vec2{1, 0} :
+			g.snake.direction = vec2{0, -1}
+	}
+}
+
+turn_right :: proc(g: ^Game) {
+	switch g.snake.direction {
+		case vec2{0, -1} :
+			g.snake.direction = vec2{1, 0}
+		case vec2{0, 1} :
+			g.snake.direction = vec2{-1, 0}
+		case vec2{-1, 0} :
+			g.snake.direction = vec2{0, -1}
+		case vec2{1, 0} :
+			g.snake.direction = vec2{0, 1}
+	}
+}
+
+history_distance :f32 = 1000.0
+
+state :: proc(g: ^Game, direction: Direction) -> int{
+	reward : int
+
+	try_x := g.snake.body[0].x
+	try_y := g.snake.body[0].y
+	
+	switch g.snake.direction {
+		case vec2{0, -1} :
+			switch direction {
+				case .Forward :
+					try_y -= 1  
+				case .Left :
+					try_x -= 1  
+				case .Right :
+					try_x += 1  
+			}
+		case vec2{0, 1} :
+			switch direction {
+				case .Forward :
+					try_y += 1  
+				case .Left :
+					try_x += 1  
+				case .Right :
+					try_x -= 1  
+			}
+		case vec2{-1, 0} :
+			switch direction {
+				case .Forward :
+					try_x -= 1  
+				case .Left :
+					try_y += 1  
+				case .Right :
+					try_y -= 1  
+			}
+		case vec2{1, 0} :
+			switch direction {
+				case .Forward :
+					try_x += 1  
+				case .Left :
+					try_y -= 1  
+				case .Right :
+					try_y += 1  
+			}
+	}
+
+	if try_x < 0 || try_x > CELL_COUNT - 1 {
+		reward -= 100
+	}
+	if try_y == -1 || try_y > CELL_COUNT - 1 {
+		reward -= 100
+	}
+	if try_x == g.food.position.x && try_y == g.food.position.y {
+		reward += 100
+	}
+
+	if math.abs(try_x - g.food.position.x) < math.abs(g.snake.body[0].x - g.food.position.x)  {
+		reward += 5
+	}
+	if math.abs(try_y - g.food.position.y) < math.abs(g.snake.body[0].y - g.food.position.y)  {
+		reward += 5
+	}
+
+	for v in g.snake.body[1:] {
+		if try_x == v.x && try_y == v.y {
+			reward -= 100
+		}
+	}
+	
+	return reward
+}
+
+vector2_distance :: proc(a: vec2, b: vec2) -> f32 {
+	x := a.x - b.x
+	y := a.y - b.y
+	return x * x + y * y
+}
+
+ai :: proc(g: ^Game) {
+	try_f := state(g, .Forward)
+	try_l := state(g, .Left)
+	try_r := state(g, .Right)
+
+	fmt.println("try reward:", try_f, try_l, try_r)
+
+	if try_f >= try_l && try_f >= try_r {
+		// continue
+	} else {
+		if try_l > try_r {
+			turn_left(g)
+		} else {
+			turn_right(g)
+		}
+	}
+}
+
+ai2 :: proc(g: ^Game) {
+	try_f := state(g, .Forward)
+	try_l := state(g, .Left)
+	try_r := state(g, .Right)
+	fmt.println("ai2 try reward:", try_f, try_l, try_r)
+
+	if try_f >= 100 {
+		return
+	} else if try_l >= 100 {
+		turn_left(g)
+		return
+	} else if try_r >= 100 {
+		turn_right(g)
+		return
+	}
+
+	if vector2_distance(g.snake.body[0], g.food.position) < vector2_distance(g.snake.body[1], g.food.position) && try_f >= 0{
+		// continue
+	} else {
+		random_index := rand.int_max(2)
+		if random_index == 0 && try_l >= 0 {
+			turn_left(g)
+		}
+		if random_index == 1 && try_r >= 0 {
+			turn_right(g)
+		}
+	}
+}
+
 
 main :: proc() {
 	rl.InitWindow(
@@ -230,6 +389,12 @@ main :: proc() {
 		}
 		if rl.IsKeyPressed(.RIGHT) && g.snake.direction.x != -1 && allow_move {
 			g.snake.direction = vec2{1, 0}
+			g.running = true
+			allow_move = false
+		}
+
+		if allow_move {
+			ai2(&g)
 			g.running = true
 			allow_move = false
 		}
